@@ -4,7 +4,8 @@
     "dockerfile": "Dockerfile",
     "args": {
       "FZF_VERSION": "latest",
-      "TEALDEER_VERSION": "latest"
+      "TEALDEER_VERSION": "latest",
+      "ENABLE_SUDO": "1"
     }
   },
   "remoteUser": "ubuntu",

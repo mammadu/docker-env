@@ -13,6 +13,8 @@
 #   ZAS_REF           zsh-autosuggestions branch or tag      (default: master)
 #   UNMINIMIZE        1 = restore ALL man pages on minimized Ubuntu images (slower, bigger image)
 #                     0 = only keep man pages for packages installed by this script
+#   ENABLE_SUDO       1 = install sudo and give each configured non-root user passwordless sudo
+#                     0 = don't touch sudo
 set -euo pipefail
 
 FZF_VERSION="${FZF_VERSION:-latest}"
@@ -21,6 +23,7 @@ OMZ_REF="${OMZ_REF:-master}"
 FSH_REF="${FSH_REF:-master}"
 ZAS_REF="${ZAS_REF:-master}"
 UNMINIMIZE="${UNMINIMIZE:-1}"
+ENABLE_SUDO="${ENABLE_SUDO:-1}"
 export DEBIAN_FRONTEND=noninteractive
 
 log() { printf '\n==> %s\n' "$*"; }
@@ -92,8 +95,9 @@ apt-get update
 restore_man_pages
 
 log "Installing packages"
-apt-get install -y --no-install-recommends \
-  ca-certificates curl git zsh less man-db manpages
+packages=(ca-certificates curl git zsh less man-db manpages)
+if [ "$ENABLE_SUDO" = 1 ]; then packages+=(sudo); fi
+apt-get install -y --no-install-recommends "${packages[@]}"
 
 # ------------------------------------------------------------------ fzf
 tag="$(resolve_tag junegunn/fzf "$FZF_VERSION")"
@@ -156,6 +160,14 @@ EOF
   chown "$user:" "$rc"
 
   usermod --shell "$(command -v zsh)" "$user"
+
+  if [ "$ENABLE_SUDO" = 1 ] && [ "$user" != root ]; then
+    # sudo ignores files containing "." or "~", so sanitise the name.
+    local sudoers="/etc/sudoers.d/90-$(printf '%s' "$user" | tr -c '[:alnum:]_-' '_')"
+    echo "$user ALL=(ALL) NOPASSWD:ALL" > "$sudoers"
+    chmod 0440 "$sudoers"
+    visudo -cqf "$sudoers" || { echo "Invalid sudoers file for $user" >&2; rm -f "$sudoers"; return 1; }
+  fi
   if ! as_user "$user" tldr --update >/dev/null 2>&1; then
     # Behind a TLS-inspecting proxy, tealdeer's bundled CA list fails; use the system store.
     as_user "$user" mkdir -p "$home/.config/tealdeer"
